@@ -84,22 +84,38 @@ async function run() {
   await page.waitForSelector('div[role="dialog"]', { timeout: 3000 }).catch(() => {});
   await closePopups(page);
 
-  // Garante alvo do post
+  // Garante que o DOM do artigo está renderizado
   await page.waitForSelector("article", { timeout: 5000 }).catch(() => {});
   await page.waitForTimeout(300);
 
-  // Screenshot do container do post; fallback viewport
-  const candidates = ["main article", "article", 'div[role="main"] article', "main"];
+  // Screenshot SOMENTE do post principal (article) usando o shortcode
   let shot = false;
-  for (const sel of candidates) {
-    const el = page.locator(sel).first();
-    if ((await el.count().catch(() => 0)) > 0) {
-      await el.screenshot({ path: outFile }).catch(() => {});
-      shot = true;
-      break;
+  const postLocatorCandidates = [
+    `article:has(a[href*="/p/${id}/"])`,
+    `main article:has(a[href*="/p/${id}/"])`,
+    // fallback heurísticos
+    `main article:has(time)`,   // geralmente o principal
+    `main article`,
+    `article`
+  ];
+
+  for (const sel of postLocatorCandidates) {
+    const loc = page.locator(sel).first();
+    if ((await loc.count().catch(() => 0)) > 0) {
+      await loc.scrollIntoViewIfNeeded().catch(() => {});
+      await page.waitForTimeout(200);
+      try {
+        await loc.screenshot({ path: outFile });
+        shot = true;
+        break;
+      } catch {
+        // tenta próximo candidato
+      }
     }
   }
+
   if (!shot) {
+    // último recurso: viewport (para não falhar o job)
     await page.screenshot({ path: outFile, fullPage: false });
   }
 
