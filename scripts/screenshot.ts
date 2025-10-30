@@ -17,18 +17,16 @@ async function tryClick(page: any, selector: string) {
 }
 
 async function closePopups(page: any) {
-  // aguarda diálogo (se aparecer) e tenta fechar várias formas
+  // Tenta fechar o modal (3 rodadas)
   for (let i = 0; i < 3; i++) {
     const dlg = page.locator('div[role="dialog"]').first();
     const hasDialog = await dlg.isVisible().catch(() => false);
     if (hasDialog) {
-      // tentativas mais específicas dentro do diálogo
       const attempts = [
         'div[role="dialog"] button[aria-label="Fechar"]',
         'div[role="dialog"] button[aria-label="Close"]',
         'div[role="dialog"] [aria-label="Fechar"]',
         'div[role="dialog"] [aria-label="Close"]',
-        // botões genéricos no canto superior
         'div[role="dialog"] [role="button"]:has(svg[aria-label="Close"])',
         'div[role="dialog"] [role="button"]:near(:text("Sign up"), 200)',
         'div[role="dialog"] button:has-text("X")'
@@ -37,7 +35,6 @@ async function closePopups(page: any) {
       for (const sel of attempts) {
         if (await tryClick(page, sel)) { clicked = true; break; }
       }
-      // fallback: clique relativo no canto do dialog
       if (!clicked) {
         const box = await dlg.boundingBox().catch(() => null);
         if (box) {
@@ -48,16 +45,14 @@ async function closePopups(page: any) {
         }
       }
     }
-    // ESC como fallback
-    await page.keyboard.press('Escape').catch(() => {});
+    await page.keyboard.press("Escape").catch(() => {});
     await page.waitForTimeout(250);
-
-    // se não houver mais dialog, encerra
-    if (!(await page.locator('div[role="dialog"]').first().isVisible().catch(() => false))) break;
+    const stillDialog = await page.locator('div[role="dialog"]').first().isVisible().catch(() => false);
+    if (!stillDialog) break;
     await page.waitForTimeout(300);
   }
 
-  // banner de cookies
+  // Cookies
   const cookieSelectors = [
     'button:has-text("Permitir todos os cookies")',
     'button:has-text("Aceitar")',
@@ -84,5 +79,35 @@ async function run() {
 
   await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  // espere o diálogo surgir (se for surgir) por até 3s e feche
-  await page.waitForTimeout(800
+  // Espera curta para o modal surgir e fecha
+  await page.waitForTimeout(800);
+  await page.waitForSelector('div[role="dialog"]', { timeout: 3000 }).catch(() => {});
+  await closePopups(page);
+
+  // Garante alvo do post
+  await page.waitForSelector("article", { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
+
+  // Screenshot do container do post; fallback viewport
+  const candidates = ["main article", "article", 'div[role="main"] article', "main"];
+  let shot = false;
+  for (const sel of candidates) {
+    const el = page.locator(sel).first();
+    if ((await el.count().catch(() => 0)) > 0) {
+      await el.screenshot({ path: outFile }).catch(() => {});
+      shot = true;
+      break;
+    }
+  }
+  if (!shot) {
+    await page.screenshot({ path: outFile, fullPage: false });
+  }
+
+  console.log(JSON.stringify({ id, file: outFile }));
+  await browser.close();
+}
+
+run().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
