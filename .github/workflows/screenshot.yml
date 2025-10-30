@@ -47,16 +47,16 @@ jobs:
           mkdir -p upload
           cp "${{ steps.parse.outputs.file }}" upload/
 
-      - name: Upload via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      - name: Upload via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
-          server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USER }}
+          server: ${{ secrets.SFTP_HOST }}
           password: ${{ secrets.SFTP_PASS }}
-          protocol: ftp
-          port: 21
-          local-dir: ./upload/
-          server-dir: ${{ secrets.SFTP_PATH }}
+          port: ${{ secrets.SFTP_PORT }}
+          local_path: ./upload/
+          remote_path: ${{ secrets.SFTP_REMOTE }}
+          sftp_only: true
 
       - name: Output JSON
         run: |
