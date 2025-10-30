@@ -1,0 +1,62 @@
+name: Screenshot Instagram Post
+
+on:
+  workflow_dispatch:
+    inputs:
+      postUrl:
+        description: URL do post (p|reel)
+        required: true
+        type: string
+
+jobs:
+  shot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run screenshot
+        env:
+          POST_URL: ${{ github.event.inputs.postUrl }}
+        run: npm run screenshot
+
+      - name: Detect file and id
+        id: parse
+        shell: bash
+        run: |
+          FILE=$(ls *.png | head -n1)
+          ID="${FILE%%.*}"
+          echo "id=$ID" >> $GITHUB_OUTPUT
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+
+      - name: Upload via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          username: ${{ secrets.SFTP_USER }}
+          server: ${{ secrets.SFTP_HOST }}
+          password: ${{ secrets.SFTP_PASS }}
+          local_path: ./${{ steps.parse.outputs.file }}
+          remote_path: ${{ secrets.SFTP_PATH }}
+          sftp_only: true
+
+      - name: Output JSON
+        run: |
+          ID=${{ steps.parse.outputs.id }}
+          echo "{\"id\":\"$ID\",\"fileUrl\":\"https://${{ secrets.SFTP_HOST }}${{ secrets.SFTP_PUBLIC_PREFIX }}$ID.png\"}" > result.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: result
+          path: result.json
