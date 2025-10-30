@@ -1,91 +1,71 @@
-import { chromium } from "@playwright/test";
+name: Screenshot Instagram Post
 
-function extractShortcode(url: string): string {
-  const m = url.match(/instagram\.com\/(p|reel)\/([A-Za-z0-9_-]+)/i);
-  if (!m) throw new Error("URL de post inválida");
-  return m[2];
-}
+on:
+  workflow_dispatch:
+    inputs:
+      postUrl:
+        description: URL do post (p|reel)
+        required: true
+        type: string
 
-async function closePopups(page: any) {
-  // 1) tenta fechar o modal principal (X/Fechar/Close)
-  const closeSelectors = [
-    'div[role="dialog"] button[aria-label="Fechar"]',
-    'button[aria-label="Fechar"]',
-    'div[role="dialog"] button[aria-label="Close"]',
-    'button[aria-label="Close"]',
-    'button:has-text("Fechar")',
-    'text=Fechar'
-  ];
-  for (const sel of closeSelectors) {
-    const el = page.locator(sel).first();
-    if (await el.isVisible().catch(() => false)) {
-      await el.click({ timeout: 1000 }).catch(() => {});
-      await page.waitForTimeout(300);
-      break;
-    }
-  }
+jobs:
+  shot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  // 2) envia ESC como fallback para diálogos modais
-  await page.keyboard.press("Escape").catch(() => {});
-  await page.waitForTimeout(300);
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-  // 3) aceita cookies, se houver
-  const cookieSelectors = [
-    'button:has-text("Permitir todos os cookies")',
-    'button:has-text("Aceitar")',
-    'button:has-text("Allow all cookies")'
-  ];
-  for (const sel of cookieSelectors) {
-    const el = page.locator(sel).first();
-    if (await el.isVisible().catch(() => false)) {
-      await el.click({ timeout: 1000 }).catch(() => {});
-      await page.waitForTimeout(300);
-      break;
-    }
-  }
-}
+      - name: Install deps
+        run: npm install --no-fund --no-audit
 
-async function run() {
-  const postUrl = process.env.POST_URL;
-  if (!postUrl) throw new Error("Defina POST_URL");
-  const id = extractShortcode(postUrl);
-  const outFile = `${id}.png`;
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 1000 },
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36"
-  });
-  const page = await context.newPage();
+      - name: Run screenshot
+        env:
+          POST_URL: ${{ github.event.inputs.postUrl }}
+        run: npm run screenshot
 
-  await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await closePopups(page);
+      - name: Detect file and id
+        id: parse
+        shell: bash
+        run: |
+          FILE=$(ls *.png | head -n1)
+          ID="${FILE%%.*}"
+          echo "id=$ID" >> $GITHUB_OUTPUT
+          echo "file=$FILE" >> $GITHUB_OUTPUT
+          echo "Detected file: $FILE"
 
-  // garante que o post esteja disponível
-  await page.waitForSelector("article", { timeout: 5000 }).catch(() => {});
-  await page.waitForTimeout(300);
+      - name: Prepare upload dir
+        shell: bash
+        run: |
+          mkdir -p upload
+          cp "${{ steps.parse.outputs.file }}" upload/
 
-  // tenta capturar apenas o container do post; fallback = viewport
-  const candidates = ["main article", "article", 'div[role="main"] article', "main"];
-  let shot = false;
-  for (const sel of candidates) {
-    const el = page.locator(sel).first();
-    if ((await el.count().catch(() => 0)) > 0) {
-      await el.screenshot({ path: outFile }).catch(() => {});
-      shot = true;
-      break;
-    }
-  }
-  if (!shot) {
-    await page.screenshot({ path: outFile, fullPage: false });
-  }
+      - name: Upload via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          username: ${{ secrets.SFTP_USER }}
+          server: ${{ secrets.SFTP_HOST }}
+          password: ${{ secrets.SFTP_PASS }}
+          port: ${{ secrets.SFTP_PORT }}
+          local_path: ./upload/
+          remote_path: ${{ secrets.SFTP_REMOTE }}
+          sftp_only: true
 
-  console.log(JSON.stringify({ id, file: outFile }));
-  await browser.close();
-}
+      - name: Output JSON
+        run: |
+          ID=${{ steps.parse.outputs.id }}
+          echo "{\"id\":\"$ID\",\"fileUrl\":\"https://zaap.blog${{ secrets.SFTP_PUBLIC_PREFIX }}$ID.png\"}" > result.json
+          cat result.json
 
-run().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: result
+          path: result.json
