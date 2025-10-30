@@ -41,20 +41,22 @@ jobs:
           echo "file=$FILE" >> $GITHUB_OUTPUT
           echo "Detected file: $FILE"
 
+      - name: Prepare upload dir
+        shell: bash
+        run: |
+          mkdir -p upload
+          cp "${{ steps.parse.outputs.file }}" upload/
+
       - name: Upload via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.SFTP_HOST }}
           username: ${{ secrets.SFTP_USER }}
           password: ${{ secrets.SFTP_PASS }}
-          server-dir: ${{ secrets.SFTP_PATH }}
-          local-dir: .
           protocol: ftp
           port: 21
-          # envia somente o PNG gerado
-          exclude: |
-            **/*
-            !${{ steps.parse.outputs.file }}
+          local-dir: ./upload/
+          server-dir: ${{ secrets.SFTP_PATH }}
 
       - name: Output JSON
         run: |
