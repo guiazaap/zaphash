@@ -21,7 +21,7 @@ jobs:
           node-version: 20
 
       - name: Install deps
-  run: npm install --no-fund --no-audit
+        run: npm install --no-fund --no-audit
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
