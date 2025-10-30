@@ -1,0 +1,13 @@
+{
+  "name": "zaphash-screenshots",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "screenshot": "tsx scripts/screenshot.ts"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.48.2",
+    "tsx": "^4.19.1"
+  }
+}
