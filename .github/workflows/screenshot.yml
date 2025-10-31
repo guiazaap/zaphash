@@ -41,12 +41,6 @@ jobs:
           echo "file=$FILE" >> $GITHUB_OUTPUT
           echo "Detected file: $FILE"
 
-      - name: Prepare upload dir
-        shell: bash
-        run: |
-          mkdir -p upload
-          cp "${{ steps.parse.outputs.file }}" upload/
-
       - name: Upload via SFTP
         uses: wlixcc/SFTP-Deploy-Action@v1.2.4
         with:
@@ -54,7 +48,7 @@ jobs:
           server: ${{ secrets.SFTP_HOST }}
           password: ${{ secrets.SFTP_PASS }}
           port: ${{ secrets.SFTP_PORT }}
-          local_path: ./upload/
+          local_path: ./*.png
           remote_path: ${{ secrets.SFTP_REMOTE }}
           sftp_only: true
 
